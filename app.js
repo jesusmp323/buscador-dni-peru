@@ -8,7 +8,7 @@
     // --- Configuration ---
     const API_URL = '/api/consulta';
     const DELAY_BETWEEN_REQUESTS = 1500; // ms between batch requests
-    const MAX_ROWS = 20;
+    const MAX_ROWS = 50;
 
     // --- State ---
     let currentPage = 1;
