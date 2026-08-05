@@ -13,34 +13,82 @@ module.exports = async function(req, res) {
     }
 
     try {
-        // Vercel parses 'application/x-www-form-urlencoded' into req.body object automatically
-        let bodyString = '';
-        if (typeof req.body === 'object' && req.body !== null) {
-            const params = new URLSearchParams();
-            for (const key in req.body) {
-                params.append(key, req.body[key]);
-            }
-            bodyString = params.toString();
-        } else {
-            bodyString = req.body || '';
+        let reqBody = req.body || {};
+        if (typeof req.body === 'string') {
+            const params = new URLSearchParams(req.body);
+            reqBody = Object.fromEntries(params);
         }
 
-        const response = await fetch('https://buscardniperu.com/wp-admin/admin-ajax.php', {
+        if (reqBody.tipo === 'dni') {
+            res.status(200).json({ success: false, data: { message: 'Búsqueda por DNI no soportada' } });
+            return;
+        }
+
+        // 1. Fetch token and cookie
+        const tokenParams = new URLSearchParams({
+            action: 'cc_get_tokens',
+            context: 'buscar_dni',
+            company: '',
+            count: '1'
+        });
+
+        const tokenResponse = await fetch('https://dniperu.com/wp-admin/admin-ajax.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Origin': 'https://buscardniperu.com',
-                'Referer': 'https://buscardniperu.com/buscar-dni-por-nombres/'
+                'Origin': 'https://dniperu.com',
+                'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
+                'X-Requested-With': 'XMLHttpRequest'
             },
-            body: bodyString
+            body: tokenParams.toString()
         });
 
-        const data = await response.text();
+        let cookie = '';
+        const setCookieHeader = tokenResponse.headers.get('set-cookie');
+        if (setCookieHeader) {
+            cookie = setCookieHeader.split(';')[0];
+        }
+
+        const tokenData = await tokenResponse.json();
+        if (!tokenData || !tokenData.data || !tokenData.data.cc_token) {
+            throw new Error('No se pudo obtener el token de búsqueda');
+        }
+
+        // 2. Perform search
+        const searchParams = new URLSearchParams({
+            action: 'buscar_dni',
+            tipo: 'nombre',
+            nombres: reqBody.nombres || '',
+            apellido_paterno: reqBody.ap_pat || '',
+            apellido_materno: reqBody.ap_mat || '',
+            company: '',
+            cc_token: tokenData.data.cc_token,
+            cc_sig: tokenData.data.cc_sig
+        });
+
+        const searchHeaders = {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Origin': 'https://dniperu.com',
+            'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
+            'X-Requested-With': 'XMLHttpRequest'
+        };
+        if (cookie) {
+            searchHeaders['Cookie'] = cookie;
+        }
+
+        const searchResponse = await fetch('https://dniperu.com/wp-admin/admin-ajax.php', {
+            method: 'POST',
+            headers: searchHeaders,
+            body: searchParams.toString()
+        });
+
+        const data = await searchResponse.text();
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.status(response.status).send(data);
+        res.status(searchResponse.status).send(data);
     } catch (error) {
         console.error('Proxy error:', error);
-        res.status(502).json({ success: false, data: 'Error de conexión con el servidor en Vercel' });
+        res.status(502).json({ success: false, data: 'Error interno en el proxy de Vercel' });
     }
 };

@@ -9,9 +9,10 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const querystring = require('querystring');
 
 const PORT = 8080;
-const API_HOST = 'buscardniperu.com';
+const API_HOST = 'dniperu.com';
 const API_PATH = '/wp-admin/admin-ajax.php';
 
 const MIME_TYPES = {
@@ -41,38 +42,123 @@ const server = http.createServer((req, res) => {
     if (req.url === '/api/consulta' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
-            const options = {
-                hostname: API_HOST,
-                port: 443,
-                path: API_PATH,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'Content-Length': Buffer.byteLength(body),
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Origin': 'https://buscardniperu.com',
-                    'Referer': 'https://buscardniperu.com/buscar-dni-por-nombres/',
-                },
-            };
+        req.on('end', async () => {
+            try {
+                const parsedBody = querystring.parse(body);
 
-            const proxyReq = https.request(options, (proxyRes) => {
-                let data = '';
-                proxyRes.on('data', chunk => { data += chunk; });
-                proxyRes.on('end', () => {
+                if (parsedBody.tipo === 'dni') {
+                    // dniperu.com doesn't support exact DNI lookup, return empty or mock error
+                    // We return { success: false } so the frontend ignores the age request gracefully
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(data);
+                    res.end(JSON.stringify({ success: false, data: { message: 'Búsqueda por DNI no soportada' } }));
+                    return;
+                }
+
+                // 1. Fetch token and cookie
+                const tokenPostData = querystring.stringify({
+                    action: 'cc_get_tokens',
+                    context: 'buscar_dni',
+                    company: '',
+                    count: '1'
                 });
-            });
 
-            proxyReq.on('error', (err) => {
-                console.error('Proxy error:', err.message);
+                const tokenOptions = {
+                    hostname: API_HOST,
+                    port: 443,
+                    path: API_PATH,
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Content-Length': Buffer.byteLength(tokenPostData),
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Origin': 'https://dniperu.com',
+                        'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                };
+
+                const tokenData = await new Promise((resolve, reject) => {
+                    const tokenReq = https.request(tokenOptions, (tokenRes) => {
+                        let data = '';
+                        let cookie = '';
+                        const setCookie = tokenRes.headers['set-cookie'];
+                        if (setCookie && setCookie.length > 0) {
+                            cookie = setCookie[0].split(';')[0];
+                        }
+                        tokenRes.on('data', chunk => { data += chunk; });
+                        tokenRes.on('end', () => {
+                            try {
+                                const json = JSON.parse(data);
+                                json.cookie = cookie;
+                                resolve(json);
+                            } catch (e) {
+                                reject(e);
+                            }
+                        });
+                    });
+                    tokenReq.on('error', reject);
+                    tokenReq.write(tokenPostData);
+                    tokenReq.end();
+                });
+
+                if (!tokenData || !tokenData.data || !tokenData.data.cc_token) {
+                    throw new Error('No se pudo obtener el token de búsqueda');
+                }
+
+                // 2. Perform search
+                const searchPostData = querystring.stringify({
+                    action: 'buscar_dni',
+                    tipo: 'nombre',
+                    nombres: parsedBody.nombres || '',
+                    apellido_paterno: parsedBody.ap_pat || '',
+                    apellido_materno: parsedBody.ap_mat || '',
+                    company: '',
+                    cc_token: tokenData.data.cc_token,
+                    cc_sig: tokenData.data.cc_sig
+                });
+
+                const searchOptions = {
+                    hostname: API_HOST,
+                    port: 443,
+                    path: API_PATH,
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Content-Length': Buffer.byteLength(searchPostData),
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Origin': 'https://dniperu.com',
+                        'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                };
+
+                if (tokenData.cookie) {
+                    searchOptions.headers['Cookie'] = tokenData.cookie;
+                }
+
+                const searchReq = https.request(searchOptions, (searchRes) => {
+                    let data = '';
+                    searchRes.on('data', chunk => { data += chunk; });
+                    searchRes.on('end', () => {
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(data);
+                    });
+                });
+
+                searchReq.on('error', (err) => {
+                    console.error('Proxy error on search:', err.message);
+                    res.writeHead(502, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, data: 'Error de conexión con el servidor de búsqueda' }));
+                });
+
+                searchReq.write(searchPostData);
+                searchReq.end();
+
+            } catch (err) {
+                console.error('Proxy overall error:', err.message);
                 res.writeHead(502, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, data: 'Error de conexión con el servidor' }));
-            });
-
-            proxyReq.write(body);
-            proxyReq.end();
+                res.end(JSON.stringify({ success: false, data: 'Error interno en el proxy' }));
+            }
         });
         return;
     }
