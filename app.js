@@ -171,10 +171,9 @@
         return result;
     }
 
-    async function searchAgeByDNI(dni) {
+    async function fetchExtraDataByDNI(dni) {
         const formData = new URLSearchParams();
         formData.append('dni', dni.trim());
-        formData.append('action', 'consulta_dni_api');
         formData.append('tipo', 'dni');
 
         const response = await fetch(API_URL, {
@@ -262,6 +261,8 @@
                         <th>Nombre Completo</th>
                         <th>Nacimiento</th>
                         <th>Edad Exacta</th>
+                        <th>Ubigeo</th>
+                        <th>Díg. Verif.</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -287,6 +288,8 @@
                     <td>${escapeHtml(person.ap_pat)} ${escapeHtml(person.ap_mat)}, ${escapeHtml(person.nombres)}</td>
                     <td class="birthday-cell">${birthHtml}</td>
                     <td class="age-cell">${ageHtml}</td>
+                    <td class="ubigeo-cell">${escapeHtml(person.ubigeo || '—')}</td>
+                    <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
                 </tr>
             `;
         });
@@ -309,6 +312,8 @@
                         <th>Nombre Registrado</th>
                         <th>Nacimiento</th>
                         <th>Edad Exacta</th>
+                        <th>Ubigeo</th>
+                        <th>Díg. Verif.</th>
                         <th>Estado</th>
                     </tr>
                 </thead>
@@ -339,6 +344,8 @@
                             <td>${escapeHtml(person.ap_pat)} ${escapeHtml(person.ap_mat)}, ${escapeHtml(person.nombres)}</td>
                             <td class="birthday-cell">${birthHtml}</td>
                             <td class="age-cell">${ageHtml}</td>
+                            <td class="ubigeo-cell">${escapeHtml(person.ubigeo || '—')}</td>
+                            <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
                             ${j === 0 ? `<td rowspan="${result.data.length}"><span class="result-status found">● Encontrado</span></td>` : ''}
                         </tr>
                     `;
@@ -350,6 +357,8 @@
                     <tr>
                         <td>${i + 1}</td>
                         <td>${escapeHtml(result.searchQuery)}</td>
+                        <td>—</td>
+                        <td>—</td>
                         <td>—</td>
                         <td>—</td>
                         <td>—</td>
@@ -430,12 +439,16 @@
                 // Fetch exact age/birthdate for each found person
                 for (let person of result.data) {
                     try {
-                        const ageResult = await searchAgeByDNI(person.dni);
-                        if (ageResult.success && ageResult.data && ageResult.data.fecha_nac) {
-                            person.ageData = calculateExactAge(ageResult.data.fecha_nac);
+                        const extraResult = await fetchExtraDataByDNI(person.dni);
+                        if (extraResult.success && extraResult.data) {
+                            if (extraResult.data.fecha_nac) {
+                                person.ageData = calculateExactAge(extraResult.data.fecha_nac);
+                            }
+                            person.verificador = extraResult.data.verificador;
+                            person.ubigeo = extraResult.data.ubigeo;
                         }
                     } catch (err) {
-                        // Ignore age errors to still show the DNI
+                        // Ignore extra data errors to still show the DNI
                     }
                 }
 
@@ -689,12 +702,16 @@
                     // Fetch exact age for each found person
                     for (let p of result.data) {
                         try {
-                            const ageResult = await searchAgeByDNI(p.dni);
-                            if (ageResult.success && ageResult.data && ageResult.data.fecha_nac) {
-                                p.ageData = calculateExactAge(ageResult.data.fecha_nac);
+                            const extraResult = await fetchExtraDataByDNI(p.dni);
+                            if (extraResult.success && extraResult.data) {
+                                if (extraResult.data.fecha_nac) {
+                                    p.ageData = calculateExactAge(extraResult.data.fecha_nac);
+                                }
+                                p.verificador = extraResult.data.verificador;
+                                p.ubigeo = extraResult.data.ubigeo;
                             }
                         } catch (err) {
-                            // Ignore age errors to still show the DNI
+                            // Ignore extra data errors to still show the DNI
                         }
                     }
                     batchResults.push({ searchQuery, found: true, data: result.data });
@@ -745,6 +762,8 @@
             { header: 'Nombre Registrado', key: 'name', width: 35 },
             { header: 'Nacimiento', key: 'birth', width: 15 },
             { header: 'Edad Exacta', key: 'age', width: 25 },
+            { header: 'Ubigeo', key: 'ubigeo', width: 15 },
+            { header: 'Díg. Verif.', key: 'verif', width: 15 },
             { header: 'Estado', key: 'status', width: 15 }
         ];
 
@@ -765,6 +784,8 @@
                         name: `${person.ap_pat} ${person.ap_mat}, ${person.nombres}`,
                         birth: birthStr,
                         age: ageStr,
+                        ubigeo: person.ubigeo || '—',
+                        verif: person.verificador || '—',
                         status: 'Encontrado'
                     });
                 });
@@ -775,13 +796,15 @@
                     name: '—',
                     birth: '—',
                     age: '—',
+                    ubigeo: '—',
+                    verif: '—',
                     status: result.error ? 'Error' : 'No encontrado'
                 });
             }
         });
 
         // Add auto filters
-        sheet.autoFilter = 'A1:F1';
+        sheet.autoFilter = 'A1:H1';
 
         // Styling
         sheet.eachRow((row, rowNumber) => {
@@ -862,12 +885,16 @@
                         `${person.ap_pat} ${person.ap_mat}, ${person.nombres}`,
                         birthStr,
                         ageStr,
+                        person.ubigeo || '—',
+                        person.verificador || '—',
                         'Encontrado'
                     ]);
                 });
             } else {
                 tableBody.push([
                     result.searchQuery,
+                    '—',
+                    '—',
                     '—',
                     '—',
                     '—',
@@ -879,7 +906,7 @@
 
         doc.autoTable({
             startY: 35,
-            head: [['Persona Buscada', 'DNI', 'Nombre Registrado', 'Nacimiento', 'Edad Exacta', 'Estado']],
+            head: [['Persona Buscada', 'DNI', 'Nombre Registrado', 'Nacimiento', 'Edad Exacta', 'Ubigeo', 'Díg. Verif.', 'Estado']],
             body: tableBody,
             theme: 'grid',
             headStyles: { fillColor: [18, 104, 142] }, // Dark blue

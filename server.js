@@ -5,15 +5,12 @@
 // ============================================
 
 const http = require('http');
-const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const querystring = require('querystring');
 
 const PORT = 8080;
-const API_HOST = 'dniperu.com';
-const API_PATH = '/wp-admin/admin-ajax.php';
 
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -26,7 +23,7 @@ const MIME_TYPES = {
     '.ico': 'image/x-icon',
 };
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
     // CORS headers for all responses
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -42,71 +39,117 @@ const server = http.createServer((req, res) => {
     if (req.url === '/api/consulta' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk; });
+        
         req.on('end', async () => {
             try {
                 const parsedBody = querystring.parse(body);
 
+                // --- MANEJO DE CONSULTA POR DNI (Datos Extra) ---
                 if (parsedBody.tipo === 'dni') {
-                    // dniperu.com doesn't support exact DNI lookup, return empty or mock error
-                    // We return { success: false } so the frontend ignores the age request gracefully
+                    const dni = parsedBody.dni;
+                    if (!dni) {
+                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                        res.end(JSON.stringify({ success: false, data: { message: 'DNI requerido' } }));
+                        return;
+                    }
+
+                    const fetchDniPeruData = async (context, action, inputField) => {
+                        try {
+                            const tokenParams = new URLSearchParams({ action: 'cc_get_tokens', context: context, company: '', count: '1' });
+                            const headers = {
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Origin': 'https://dniperu.com',
+                                'Referer': `https://dniperu.com/${action === 'buscar_nombres' ? 'digito-verificador-dni' : action === 'buscar_fecha' ? 'saber-edad-con-dni' : 'buscar-ubigeo-dni'}/`,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            };
+
+                            const tokenRes = await fetch('https://dniperu.com/wp-admin/admin-ajax.php', { method: 'POST', headers: headers, body: tokenParams.toString() });
+                            const tokenData = await tokenRes.json();
+                            
+                            let cookie = '';
+                            const setCookieHeader = tokenRes.headers.get('set-cookie');
+                            if (setCookieHeader) cookie = setCookieHeader.split(';')[0];
+                            
+                            if (!tokenData || !tokenData.data || !tokenData.data.cc_token) return null;
+
+                            const searchParams = new URLSearchParams({ action: action, [inputField]: dni, cc_token: tokenData.data.cc_token, cc_sig: tokenData.data.cc_sig });
+                            const searchHeaders = { ...headers };
+                            if (cookie) searchHeaders['Cookie'] = cookie;
+                            
+                            const searchRes = await fetch('https://dniperu.com/wp-admin/admin-ajax.php', { method: 'POST', headers: searchHeaders, body: searchParams.toString() });
+                            return await searchRes.json();
+                        } catch (e) {
+                            console.error(`Error fetching ${action}:`, e);
+                            return null;
+                        }
+                    };
+
+                    const [fechaRes, nombresRes, ubigeoRes] = await Promise.all([
+                        fetchDniPeruData('buscar_fecha', 'buscar_fecha', 'dni'),
+                        fetchDniPeruData('buscar_nombres', 'buscar_nombres', 'dni4'),
+                        fetchDniPeruData('buscar_ubigeo', 'buscar_ubigeo', 'dni')
+                    ]);
+
+                    let fecha_nac = '';
+                    let verificador = '';
+                    let ubigeo = '';
+
+                    if (fechaRes && fechaRes.success && fechaRes.data) {
+                        fecha_nac = fechaRes.data.fechaNacimiento || '';
+                    }
+                    if (nombresRes && nombresRes.success && nombresRes.data && nombresRes.data.message) {
+                        const match = nombresRes.data.message.match(/Codigo de Verificacion:\s*(\d)/i);
+                        if (match) verificador = match[1];
+                    }
+                    if (ubigeoRes && ubigeoRes.success && ubigeoRes.data) {
+                        ubigeo = ubigeoRes.data.ubigeo || '';
+                    }
+
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({ success: false, data: { message: 'Búsqueda por DNI no soportada' } }));
+                    res.end(JSON.stringify({
+                        success: true,
+                        data: {
+                            fecha_nac,
+                            verificador,
+                            ubigeo
+                        }
+                    }));
                     return;
                 }
 
-                // 1. Fetch token and cookie
-                const tokenPostData = querystring.stringify({
+                // --- MANEJO DE CONSULTA POR NOMBRES (Original) ---
+                const tokenParams = new URLSearchParams({
                     action: 'cc_get_tokens',
                     context: 'buscar_dni',
                     company: '',
                     count: '1'
                 });
 
-                const tokenOptions = {
-                    hostname: API_HOST,
-                    port: 443,
-                    path: API_PATH,
+                const tokenResponse = await fetch('https://dniperu.com/wp-admin/admin-ajax.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Content-Length': Buffer.byteLength(tokenPostData),
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                         'Origin': 'https://dniperu.com',
                         'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
-                };
-
-                const tokenData = await new Promise((resolve, reject) => {
-                    const tokenReq = https.request(tokenOptions, (tokenRes) => {
-                        let data = '';
-                        let cookie = '';
-                        const setCookie = tokenRes.headers['set-cookie'];
-                        if (setCookie && setCookie.length > 0) {
-                            cookie = setCookie[0].split(';')[0];
-                        }
-                        tokenRes.on('data', chunk => { data += chunk; });
-                        tokenRes.on('end', () => {
-                            try {
-                                const json = JSON.parse(data);
-                                json.cookie = cookie;
-                                resolve(json);
-                            } catch (e) {
-                                reject(e);
-                            }
-                        });
-                    });
-                    tokenReq.on('error', reject);
-                    tokenReq.write(tokenPostData);
-                    tokenReq.end();
+                    body: tokenParams.toString()
                 });
 
+                let cookie = '';
+                const setCookieHeader = tokenResponse.headers.get('set-cookie');
+                if (setCookieHeader) {
+                    cookie = setCookieHeader.split(';')[0];
+                }
+
+                const tokenData = await tokenResponse.json();
                 if (!tokenData || !tokenData.data || !tokenData.data.cc_token) {
                     throw new Error('No se pudo obtener el token de búsqueda');
                 }
 
-                // 2. Perform search
-                const searchPostData = querystring.stringify({
+                const searchParams = new URLSearchParams({
                     action: 'buscar_dni',
                     tipo: 'nombre',
                     nombres: parsedBody.nombres || '',
@@ -117,65 +160,43 @@ const server = http.createServer((req, res) => {
                     cc_sig: tokenData.data.cc_sig
                 });
 
-                const searchOptions = {
-                    hostname: API_HOST,
-                    port: 443,
-                    path: API_PATH,
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Content-Length': Buffer.byteLength(searchPostData),
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Origin': 'https://dniperu.com',
-                        'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
+                const searchHeaders = {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Origin': 'https://dniperu.com',
+                    'Referer': 'https://dniperu.com/buscar-dni-por-nombre/',
+                    'X-Requested-With': 'XMLHttpRequest'
                 };
-
-                if (tokenData.cookie) {
-                    searchOptions.headers['Cookie'] = tokenData.cookie;
+                if (cookie) {
+                    searchHeaders['Cookie'] = cookie;
                 }
 
-                const searchReq = https.request(searchOptions, (searchRes) => {
-                    let data = '';
-                    searchRes.on('data', chunk => { data += chunk; });
-                    searchRes.on('end', () => {
-                        try {
-                            const rawData = JSON.parse(data);
-                            // Map response to match the old API format expected by the frontend
-                            if (rawData.success && rawData.data && rawData.data.resultados) {
-                                const mappedData = rawData.data.resultados.map(p => ({
-                                    dni: p.numero,
-                                    nombres: p.nombres,
-                                    ap_pat: p.apellido_paterno,
-                                    ap_mat: p.apellido_materno
-                                }));
-                                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                                res.end(JSON.stringify({ success: true, data: mappedData }));
-                            } else {
-                                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                                res.end(JSON.stringify({ success: false, data: rawData.message || 'No se encontraron resultados' }));
-                            }
-                        } catch(e) {
-                            res.writeHead(502, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ success: false, data: 'Error parseando la respuesta de dniperu.com' }));
-                        }
-                    });
+                const searchResponse = await fetch('https://dniperu.com/wp-admin/admin-ajax.php', {
+                    method: 'POST',
+                    headers: searchHeaders,
+                    body: searchParams.toString()
                 });
 
-                searchReq.on('error', (err) => {
-                    console.error('Proxy error on search:', err.message);
-                    res.writeHead(502, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ success: false, data: 'Error de conexión con el servidor de búsqueda' }));
-                });
-
-                searchReq.write(searchPostData);
-                searchReq.end();
+                const rawData = await searchResponse.json();
+                
+                if (rawData.success && rawData.data && rawData.data.resultados) {
+                    const mappedData = rawData.data.resultados.map(p => ({
+                        dni: p.numero,
+                        nombres: p.nombres,
+                        ap_pat: p.apellido_paterno,
+                        ap_mat: p.apellido_materno
+                    }));
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: true, data: mappedData }));
+                } else {
+                    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({ success: false, data: rawData.message || 'No se encontraron resultados' }));
+                }
 
             } catch (err) {
-                console.error('Proxy overall error:', err.message);
+                console.error('Proxy error:', err);
                 res.writeHead(502, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, data: 'Error interno en el proxy' }));
+                res.end(JSON.stringify({ success: false, data: 'Error interno en el proxy local' }));
             }
         });
         return;
