@@ -304,6 +304,25 @@
             otherMatches.push(...data);
         }
 
+        // Sort otherMatches by ubigeo proximity to the exact match
+        if (exactMatches.length > 0 && exactMatches[0].ubigeo) {
+            const refUbigeo = exactMatches[0].ubigeo.toString();
+            otherMatches.sort((a, b) => {
+                const ua = (a.ubigeo || '').toString();
+                const ub = (b.ubigeo || '').toString();
+                
+                const getDistance = (u) => {
+                    if (!u || u === '—') return 4; // No ubigeo
+                    if (u === refUbigeo) return 0; // Same district
+                    if (u.substring(0, 4) === refUbigeo.substring(0, 4)) return 1; // Same province
+                    if (u.substring(0, 2) === refUbigeo.substring(0, 2)) return 2; // Same department
+                    return 3; // Different department
+                };
+
+                return getDistance(ua) - getDistance(ub);
+            });
+        }
+
         let html = '';
 
         const renderTableHTML = (dataset, title) => {
