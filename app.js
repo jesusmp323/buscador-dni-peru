@@ -155,7 +155,20 @@
         });
 
         if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
-        return await response.json();
+        
+        const result = await response.json();
+        
+        // Normalizar los datos si el proxy envía el nuevo formato anidado sin procesar
+        if (result.success && result.data && result.data.resultados) {
+            result.data = result.data.resultados.map(p => ({
+                dni: p.numero,
+                nombres: p.nombres,
+                ap_pat: p.apellido_paterno,
+                ap_mat: p.apellido_materno
+            }));
+        }
+        
+        return result;
     }
 
     async function searchAgeByDNI(dni) {
