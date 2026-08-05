@@ -265,7 +265,6 @@
         `;
     }
 
-    // --- Render Results Table ---
     function renderResultsTable(data, container) {
         if (!data || data.length === 0) {
             container.innerHTML = `
@@ -282,48 +281,88 @@
             return;
         }
 
-        let html = `
-            <table class="results-table">
-                <thead>
-                    <tr>
-                        <th>DNI</th>
-                        <th>Nombre Completo</th>
-                        <th>Nacimiento</th>
-                        <th>Edad Exacta</th>
-                        <th>Ubigeo</th>
-                        <th>Díg. Verif.</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
+        const exactMatches = [];
+        const otherMatches = [];
 
-        data.forEach(person => {
-            const ageHtml = person.ageData ? `
-                <div class="age-detail">
-                    <span class="age-detail-main">${person.ageData.years} años</span>
-                    <span class="age-detail-sub">${person.ageData.months} meses, ${person.ageData.days} días</span>
-                </div>
-            ` : '—';
+        if (lastSearchData) {
+            const targetApPat = (lastSearchData.apPat || '').toUpperCase().trim();
+            const targetApMat = (lastSearchData.apMat || '').toUpperCase().trim();
+            const targetNombres = (lastSearchData.nombres || '').toUpperCase().trim();
+
+            data.forEach(p => {
+                const pApPat = (p.ap_pat || '').toUpperCase().trim();
+                const pApMat = (p.ap_mat || '').toUpperCase().trim();
+                const pNombres = (p.nombres || '').toUpperCase().trim();
+
+                if (pApPat === targetApPat && pApMat === targetApMat && pNombres === targetNombres) {
+                    exactMatches.push(p);
+                } else {
+                    otherMatches.push(p);
+                }
+            });
+        } else {
+            otherMatches.push(...data);
+        }
+
+        let html = '';
+
+        const renderTableHTML = (dataset, title) => {
+            if (dataset.length === 0) return '';
             
-            const birthHtml = person.ageData ? `
-                <span class="age-badge birthday">
-                    🎂 ${person.ageData.formattedBirthdate}
-                </span>
-            ` : '—';
-
-            html += `
-                <tr>
-                    <td class="dni-cell">${escapeHtml(person.dni)}</td>
-                    <td>${escapeHtml(person.ap_pat)} ${escapeHtml(person.ap_mat)}, ${escapeHtml(person.nombres)}</td>
-                    <td class="birthday-cell">${birthHtml}</td>
-                    <td class="age-cell">${ageHtml}</td>
-                    <td class="ubigeo-cell">${escapeHtml(person.ubigeo || '—')}</td>
-                    <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
-                </tr>
+            let tHtml = `
+                ${title ? `<h3 style="color: var(--primary); margin: 20px 0 10px 0; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 8px;">${title}</h3>` : ''}
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>DNI</th>
+                            <th>Nombre Completo</th>
+                            <th>Nacimiento</th>
+                            <th>Edad Exacta</th>
+                            <th>Ubigeo</th>
+                            <th>Díg. Verif.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             `;
-        });
 
-        html += '</tbody></table>';
+            dataset.forEach(person => {
+                const ageHtml = person.ageData ? `
+                    <div class="age-detail">
+                        <span class="age-detail-main">${person.ageData.years} años</span>
+                        <span class="age-detail-sub">${person.ageData.months} meses, ${person.ageData.days} días</span>
+                    </div>
+                ` : '—';
+                
+                const birthHtml = person.ageData ? `
+                    <span class="age-badge birthday">
+                        🎂 ${person.ageData.formattedBirthdate}
+                    </span>
+                ` : '—';
+
+                tHtml += `
+                    <tr>
+                        <td class="dni-cell">${escapeHtml(person.dni)}</td>
+                        <td>${escapeHtml(person.ap_pat)} ${escapeHtml(person.ap_mat)}, ${escapeHtml(person.nombres)}</td>
+                        <td class="birthday-cell">${birthHtml}</td>
+                        <td class="age-cell">${ageHtml}</td>
+                        <td class="ubigeo-cell">${escapeHtml(person.ubigeo || '—')}</td>
+                        <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
+                    </tr>
+                `;
+            });
+
+            tHtml += '</tbody></table>';
+            return tHtml;
+        };
+
+        if (exactMatches.length > 0) {
+            html += renderTableHTML(exactMatches, '🌟 Coincidencia Principal');
+        }
+        
+        if (otherMatches.length > 0) {
+            html += renderTableHTML(otherMatches, exactMatches.length > 0 ? '👥 Otras Posibles Personas (Familiares o Similares)' : '');
+        }
+
         container.innerHTML = html;
     }
 
