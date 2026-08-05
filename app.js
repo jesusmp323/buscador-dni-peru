@@ -190,13 +190,42 @@
     function calculateExactAge(fechaNacStr) {
         if (!fechaNacStr) return null;
         
-        // Ensure we handle formats like YYYYMMDD or YYYY-MM-DD
-        const digits = fechaNacStr.replace(/\D/g, '');
-        if (digits.length < 8) return null;
+        let day, month, year;
 
-        const year = parseInt(digits.substring(0, 4));
-        const month = parseInt(digits.substring(4, 6)) - 1;
-        const day = parseInt(digits.substring(6, 8));
+        // The API returns DD/MM/YYYY. Split by any non-digit character.
+        const parts = fechaNacStr.split(/\D+/).filter(Boolean);
+
+        if (parts.length === 3) {
+            if (parts[0].length === 4) {
+                // Format YYYY-MM-DD
+                year = parseInt(parts[0]);
+                month = parseInt(parts[1]) - 1;
+                day = parseInt(parts[2]);
+            } else {
+                // Format DD/MM/YYYY
+                day = parseInt(parts[0]);
+                month = parseInt(parts[1]) - 1;
+                year = parseInt(parts[2]);
+            }
+        } else {
+            // Fallback for string without separators
+            const digits = fechaNacStr.replace(/\D/g, '');
+            if (digits.length === 8) {
+                if (parseInt(digits.substring(0, 4)) > 1900) { // YYYYMMDD
+                    year = parseInt(digits.substring(0, 4));
+                    month = parseInt(digits.substring(4, 6)) - 1;
+                    day = parseInt(digits.substring(6, 8));
+                } else { // DDMMYYYY
+                    day = parseInt(digits.substring(0, 2));
+                    month = parseInt(digits.substring(2, 4)) - 1;
+                    year = parseInt(digits.substring(4, 8));
+                }
+            } else {
+                return null;
+            }
+        }
+
+        if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
 
         const birthDate = new Date(year, month, day);
         const today = new Date();
@@ -207,7 +236,6 @@
 
         if (days < 0) {
             months--;
-            // Get days in previous month
             const prevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
             days += prevMonth.getDate();
         }
@@ -217,7 +245,8 @@
             months += 12;
         }
 
-        const formattedBirthdate = `${day.toString().padStart(2, '0')}/${(month + 1).toString().padStart(2, '0')}/${year}`;
+        // Requested by user: day, month, year separated by hyphens
+        const formattedBirthdate = `${day.toString().padStart(2, '0')}-${(month + 1).toString().padStart(2, '0')}-${year}`;
 
         return { years, months, days, formattedBirthdate };
     }
