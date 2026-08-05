@@ -140,8 +140,26 @@ const server = http.createServer((req, res) => {
                     let data = '';
                     searchRes.on('data', chunk => { data += chunk; });
                     searchRes.on('end', () => {
-                        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                        res.end(data);
+                        try {
+                            const rawData = JSON.parse(data);
+                            // Map response to match the old API format expected by the frontend
+                            if (rawData.success && rawData.data && rawData.data.resultados) {
+                                const mappedData = rawData.data.resultados.map(p => ({
+                                    dni: p.numero,
+                                    nombres: p.nombres,
+                                    ap_pat: p.apellido_paterno,
+                                    ap_mat: p.apellido_materno
+                                }));
+                                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                                res.end(JSON.stringify({ success: true, data: mappedData }));
+                            } else {
+                                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                                res.end(JSON.stringify({ success: false, data: rawData.message || 'No se encontraron resultados' }));
+                            }
+                        } catch(e) {
+                            res.writeHead(502, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, data: 'Error parseando la respuesta de dniperu.com' }));
+                        }
                     });
                 });
 
