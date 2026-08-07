@@ -283,6 +283,7 @@
             return;
         }
         const exactMatches = [];
+        const otherMatches = [];
 
         if (lastSearchData) {
             const targetApPat = normalizeName(lastSearchData.apPat);
@@ -296,8 +297,12 @@
 
                 if (pApPat === targetApPat && pApMat === targetApMat && pNombres === targetNombres) {
                     exactMatches.push(p);
+                } else {
+                    otherMatches.push(p);
                 }
             });
+        } else {
+            otherMatches.push(...data);
         }
 
         let html = '';
@@ -351,10 +356,16 @@
 
         if (exactMatches.length > 0) {
             html += renderTableHTML(exactMatches, '🌟 Coincidencia Principal');
-        } else {
+        }
+        
+        if (otherMatches.length > 0) {
+            html += renderTableHTML(otherMatches, exactMatches.length > 0 ? '👥 Otras Posibles Personas (Similares)' : '');
+        }
+
+        if (exactMatches.length === 0 && otherMatches.length === 0) {
             html += `
                 <div class="no-results">
-                    <p>No se encontraron coincidencias exactas para esta búsqueda</p>
+                    <p>No se encontraron resultados para esta búsqueda</p>
                 </div>
             `;
         }
@@ -378,6 +389,7 @@
                         <th>Edad Exacta</th>
                         <th>Díg. Verif.</th>
                         <th>Estado</th>
+                        <th>Acción</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -409,6 +421,14 @@
                             <td class="age-cell">${ageHtml}</td>
                             <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
                             ${j === 0 ? `<td rowspan="${result.data.length}"><span class="result-status found">● Encontrado</span></td>` : ''}
+                            <td>
+                                <button class="btn-delete-person" data-result-index="${i}" data-person-dni="${person.dni}" title="Eliminar de la lista" style="background: hsla(0, 70%, 50%, 0.1); border: 1px solid hsla(0, 70%, 50%, 0.3); color: var(--error); cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='hsla(0, 70%, 50%, 0.2)'" onmouseout="this.style.background='hsla(0, 70%, 50%, 0.1)'">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
                     `;
                 });
@@ -425,6 +445,7 @@
                         <td>—</td>
                         <td>—</td>
                         <td class="status-cell"><span class="result-status ${statusClass}">${statusText}</span></td>
+                        <td>—</td>
                     </tr>
                 `;
             }
@@ -433,6 +454,26 @@
         html += '</tbody></table>';
         batchResultsEl.innerHTML = html;
         exportSection.style.display = '';
+
+        // Bind delete events
+        batchResultsEl.querySelectorAll('.btn-delete-person').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const resultIndex = parseInt(btn.getAttribute('data-result-index'));
+                const personDni = btn.getAttribute('data-person-dni');
+                
+                if (batchResults[resultIndex] && batchResults[resultIndex].data) {
+                    batchResults[resultIndex].data = batchResults[resultIndex].data.filter(p => p.dni !== personDni);
+                    
+                    // Si ya no quedan datos para esta búsqueda, marcarla como no encontrada
+                    if (batchResults[resultIndex].data.length === 0) {
+                        batchResults[resultIndex].found = false;
+                        batchResults[resultIndex].error = false;
+                    }
+                    
+                    renderBatchResults(); // Re-render table
+                }
+            });
+        });
     }
 
     // --- Render Error ---
@@ -774,7 +815,7 @@
                     });
 
                     if (exactMatchPeople.length > 0) {
-                        // Fetch exact age for each exactly matched person
+                        // We found exact matches, use only those
                         for (let p of exactMatchPeople) {
                             try {
                                 const extraResult = await fetchExtraDataByDNI(p.dni);
@@ -791,7 +832,23 @@
                         }
                         batchResults.push({ searchQuery, found: true, data: exactMatchPeople });
                     } else {
-                        batchResults.push({ searchQuery, found: false, data: [], error: false });
+                        // No exact match, but we have partial matches returned by the API
+                        // Use all returned partial matches so the user can manually delete them
+                        for (let p of result.data) {
+                            try {
+                                const extraResult = await fetchExtraDataByDNI(p.dni);
+                                if (extraResult.success && extraResult.data) {
+                                    if (extraResult.data.fecha_nac) {
+                                        p.ageData = calculateExactAge(extraResult.data.fecha_nac);
+                                    }
+                                    p.verificador = extraResult.data.verificador;
+                                    p.ubigeo = extraResult.data.ubigeo;
+                                }
+                            } catch (err) {
+                                // Ignore
+                            }
+                        }
+                        batchResults.push({ searchQuery, found: true, data: result.data });
                     }
                 } else {
                     batchResults.push({ searchQuery, found: false, data: [], error: !result.success });
