@@ -1144,7 +1144,7 @@
                 `"${birthdayCol}"`, // Birthday
                 `"${notasCol}"`, // Notes
                 "", // Photo
-                "", // Labels
+                prefix ? `"${prefix}"` : "", // Labels
                 "", // Phone 1 - Label
                 ""  // Phone 1 - Value
             ];
