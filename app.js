@@ -304,24 +304,7 @@
             otherMatches.push(...data);
         }
 
-        // Sort otherMatches by ubigeo proximity to the exact match
-        if (exactMatches.length > 0 && exactMatches[0].ubigeo) {
-            const refUbigeo = exactMatches[0].ubigeo.toString();
-            otherMatches.sort((a, b) => {
-                const ua = (a.ubigeo || '').toString();
-                const ub = (b.ubigeo || '').toString();
-                
-                const getDistance = (u) => {
-                    if (!u || u === '—') return 4; // No ubigeo
-                    if (u === refUbigeo) return 0; // Same district
-                    if (u.substring(0, 4) === refUbigeo.substring(0, 4)) return 1; // Same province
-                    if (u.substring(0, 2) === refUbigeo.substring(0, 2)) return 2; // Same department
-                    return 3; // Different department
-                };
 
-                return getDistance(ua) - getDistance(ub);
-            });
-        }
 
         let html = '';
 
@@ -337,7 +320,6 @@
                             <th>Nombre Completo</th>
                             <th>Nacimiento</th>
                             <th>Edad Exacta</th>
-                            <th>Ubigeo</th>
                             <th>Díg. Verif.</th>
                         </tr>
                     </thead>
@@ -364,7 +346,6 @@
                         <td>${escapeHtml(person.ap_pat)} ${escapeHtml(person.ap_mat)}, ${escapeHtml(person.nombres)}</td>
                         <td class="birthday-cell">${birthHtml}</td>
                         <td class="age-cell">${ageHtml}</td>
-                        <td class="ubigeo-cell">${escapeHtml(person.ubigeo || '—')}</td>
                         <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
                     </tr>
                 `;
@@ -399,7 +380,6 @@
                         <th>Nombre Registrado</th>
                         <th>Nacimiento</th>
                         <th>Edad Exacta</th>
-                        <th>Ubigeo</th>
                         <th>Díg. Verif.</th>
                         <th>Estado</th>
                     </tr>
@@ -431,7 +411,6 @@
                             <td>${escapeHtml(person.ap_pat)} ${escapeHtml(person.ap_mat)}, ${escapeHtml(person.nombres)}</td>
                             <td class="birthday-cell">${birthHtml}</td>
                             <td class="age-cell">${ageHtml}</td>
-                            <td class="ubigeo-cell">${escapeHtml(person.ubigeo || '—')}</td>
                             <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
                             ${j === 0 ? `<td rowspan="${result.data.length}"><span class="result-status found">● Encontrado</span></td>` : ''}
                         </tr>
@@ -449,8 +428,7 @@
                         <td>—</td>
                         <td>—</td>
                         <td>—</td>
-                        <td>—</td>
-                        <td><span class="result-status ${statusClass}">${statusText}</span></td>
+                        <td class="status-cell"><span class="result-status ${statusClass}">${statusText}</span></td>
                     </tr>
                 `;
             }
@@ -849,7 +827,6 @@
             { header: 'Nombre Registrado', key: 'name', width: 35 },
             { header: 'Nacimiento', key: 'birth', width: 15 },
             { header: 'Edad Exacta', key: 'age', width: 25 },
-            { header: 'Ubigeo', key: 'ubigeo', width: 15 },
             { header: 'Díg. Verif.', key: 'verif', width: 15 },
             { header: 'Estado', key: 'status', width: 15 }
         ];
@@ -871,7 +848,6 @@
                         name: `${person.ap_pat} ${person.ap_mat}, ${person.nombres}`,
                         birth: birthStr,
                         age: ageStr,
-                        ubigeo: person.ubigeo || '—',
                         verif: person.verificador || '—',
                         status: 'Encontrado'
                     });
@@ -883,7 +859,6 @@
                     name: '—',
                     birth: '—',
                     age: '—',
-                    ubigeo: '—',
                     verif: '—',
                     status: result.error ? 'Error' : 'No encontrado'
                 });
@@ -891,7 +866,7 @@
         });
 
         // Add auto filters
-        sheet.autoFilter = 'A1:H1';
+        sheet.autoFilter = 'A1:G1';
 
         // Styling
         sheet.eachRow((row, rowNumber) => {
@@ -972,7 +947,6 @@
                         `${person.ap_pat} ${person.ap_mat}, ${person.nombres}`,
                         birthStr,
                         ageStr,
-                        person.ubigeo || '—',
                         person.verificador || '—',
                         'Encontrado'
                     ]);
@@ -985,7 +959,6 @@
                     '—',
                     '—',
                     '—',
-                    '—',
                     result.error ? 'Error' : 'No encontrado'
                 ]);
             }
@@ -993,7 +966,7 @@
 
         doc.autoTable({
             startY: 35,
-            head: [['Persona Buscada', 'DNI', 'Nombre Registrado', 'Nacimiento', 'Edad Exacta', 'Ubigeo', 'Díg. Verif.', 'Estado']],
+            head: [['Persona Buscada', 'DNI', 'Nombre Registrado', 'Nacimiento', 'Edad Exacta', 'Díg. Verif.', 'Estado']],
             body: tableBody,
             theme: 'grid',
             headStyles: { fillColor: [18, 104, 142] }, // Dark blue

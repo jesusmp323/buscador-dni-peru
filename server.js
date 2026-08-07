@@ -85,15 +85,13 @@ const server = http.createServer(async (req, res) => {
                         }
                     };
 
-                    const [fechaRes, nombresRes, ubigeoRes] = await Promise.all([
+                    const [fechaRes, nombresRes] = await Promise.all([
                         fetchDniPeruData('buscar_fecha', 'buscar_fecha', 'dni'),
-                        fetchDniPeruData('buscar_nombres', 'buscar_nombres', 'dni4'),
-                        fetchDniPeruData('buscar_ubigeo', 'buscar_ubigeo', 'dni')
+                        fetchDniPeruData('buscar_nombres', 'buscar_nombres', 'dni4')
                     ]);
 
                     let fecha_nac = '';
                     let verificador = '';
-                    let ubigeo = '';
 
                     if (fechaRes && fechaRes.success && fechaRes.data) {
                         fecha_nac = fechaRes.data.fechaNacimiento || '';
@@ -102,17 +100,13 @@ const server = http.createServer(async (req, res) => {
                         const match = nombresRes.data.message.match(/Codigo de Verificacion:\s*(\d)/i);
                         if (match) verificador = match[1];
                     }
-                    if (ubigeoRes && ubigeoRes.success && ubigeoRes.data) {
-                        ubigeo = ubigeoRes.data.ubigeo || '';
-                    }
 
                     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                     res.end(JSON.stringify({
                         success: true,
                         data: {
                             fecha_nac,
-                            verificador,
-                            ubigeo
+                            verificador
                         }
                     }));
                     return;

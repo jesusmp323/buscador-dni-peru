@@ -57,16 +57,14 @@ module.exports = async function(req, res) {
                 }
             };
 
-            // Hacer las 3 consultas en paralelo
-            const [fechaRes, nombresRes, ubigeoRes] = await Promise.all([
+            // Hacer las 2 consultas en paralelo
+            const [fechaRes, nombresRes] = await Promise.all([
                 fetchDniPeruData('buscar_fecha', 'buscar_fecha', 'dni'),
-                fetchDniPeruData('buscar_nombres', 'buscar_nombres', 'dni4'),
-                fetchDniPeruData('buscar_ubigeo', 'buscar_ubigeo', 'dni')
+                fetchDniPeruData('buscar_nombres', 'buscar_nombres', 'dni4')
             ]);
 
             let fecha_nac = '';
             let verificador = '';
-            let ubigeo = '';
 
             if (fechaRes && fechaRes.success && fechaRes.data) {
                 fecha_nac = fechaRes.data.fechaNacimiento || '';
@@ -75,16 +73,12 @@ module.exports = async function(req, res) {
                 const match = nombresRes.data.message.match(/Codigo de Verificacion:\s*(\d)/i);
                 if (match) verificador = match[1];
             }
-            if (ubigeoRes && ubigeoRes.success && ubigeoRes.data) {
-                ubigeo = ubigeoRes.data.ubigeo || '';
-            }
 
             return res.status(200).json({
                 success: true,
                 data: {
                     fecha_nac,
-                    verificador,
-                    ubigeo
+                    verificador
                 }
             });
         }
