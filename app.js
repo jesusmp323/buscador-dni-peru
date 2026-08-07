@@ -388,6 +388,7 @@
                         <th>Nacimiento</th>
                         <th>Edad Exacta</th>
                         <th>Díg. Verif.</th>
+                        <th>Celular</th>
                         <th>Estado</th>
                         <th>Acción</th>
                     </tr>
@@ -420,6 +421,7 @@
                             <td class="birthday-cell">${birthHtml}</td>
                             <td class="age-cell">${ageHtml}</td>
                             <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
+                            <td>${escapeHtml(person.input_telefono || '—')}</td>
                             ${j === 0 ? `<td rowspan="${result.data.length}"><span class="result-status found">● Encontrado</span></td>` : ''}
                             <td>
                                 <button class="btn-delete-person" data-result-index="${i}" data-person-dni="${person.dni}" title="Eliminar de la lista" style="background: hsla(0, 70%, 50%, 0.1); border: 1px solid hsla(0, 70%, 50%, 0.3); color: var(--error); cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='hsla(0, 70%, 50%, 0.2)'" onmouseout="this.style.background='hsla(0, 70%, 50%, 0.1)'">
@@ -439,6 +441,7 @@
                     <tr>
                         <td>${i + 1}</td>
                         <td>${escapeHtml(result.searchQuery)}</td>
+                        <td>—</td>
                         <td>—</td>
                         <td>—</td>
                         <td>—</td>
@@ -667,13 +670,22 @@
         const lines = text.split('\n').filter(line => line.trim() !== '');
         const people = [];
 
-        for (const line of lines) {
-            // Support formats:
-            // APELLIDO_PAT, APELLIDO_MAT, NOMBRES
-            // APELLIDO_PAT; APELLIDO_MAT; NOMBRES
-            // APELLIDO_PAT  APELLIDO_MAT  NOMBRES (tab-separated)
-            let parts;
+        for (let line of lines) {
+            let telefono = '';
+            
+            // Check for phone number (format: ... - 900543258)
+            if (line.includes('-')) {
+                const partsWithDash = line.split('-');
+                // The last part is likely the phone number
+                const lastPart = partsWithDash.pop().trim();
+                // If it looks like a phone number (digits and optional spaces/plus), extract it
+                if (/^[\d\s+]+$/.test(lastPart) && lastPart.replace(/\s+/g, '').length >= 7) {
+                    telefono = lastPart;
+                    line = partsWithDash.join('-').trim(); // The rest is the name
+                }
+            }
 
+            let parts = [];
             if (line.includes(',')) {
                 parts = line.split(',').map(s => s.trim());
             } else if (line.includes(';')) {
@@ -690,7 +702,7 @@
                 const apMat = parts[1].toUpperCase();
                 const nombres = parts.slice(2).join(' ').toUpperCase();
                 if (apPat && apMat && nombres) {
-                    people.push({ apPat, apMat, nombres });
+                    people.push({ apPat, apMat, nombres, telefono });
                 }
             }
         }
@@ -817,6 +829,7 @@
                     if (exactMatchPeople.length > 0) {
                         // We found exact matches, use only those
                         for (let p of exactMatchPeople) {
+                            p.input_telefono = person.telefono;
                             try {
                                 const extraResult = await fetchExtraDataByDNI(p.dni);
                                 if (extraResult.success && extraResult.data) {
@@ -835,6 +848,7 @@
                         // No exact match, but we have partial matches returned by the API
                         // Use all returned partial matches so the user can manually delete them
                         for (let p of result.data) {
+                            p.input_telefono = person.telefono;
                             try {
                                 const extraResult = await fetchExtraDataByDNI(p.dni);
                                 if (extraResult.success && extraResult.data) {
@@ -1018,12 +1032,14 @@
                         birthStr,
                         ageStr,
                         person.verificador || '—',
+                        person.input_telefono || '—',
                         'Encontrado'
                     ]);
                 });
             } else {
                 tableBody.push([
                     result.searchQuery,
+                    '—',
                     '—',
                     '—',
                     '—',
@@ -1036,7 +1052,7 @@
 
         doc.autoTable({
             startY: 35,
-            head: [['Persona Buscada', 'DNI', 'Nombre Registrado', 'Nacimiento', 'Edad Exacta', 'Díg. Verif.', 'Estado']],
+            head: [['Persona Buscada', 'DNI', 'Nombre Registrado', 'Nacimiento', 'Edad Exacta', 'Díg. Verif.', 'Celular', 'Estado']],
             body: tableBody,
             theme: 'grid',
             headStyles: { fillColor: [18, 104, 142] }, // Dark blue
@@ -1058,7 +1074,7 @@
             text += `${i + 1}. ${result.searchQuery}\n`;
             if (result.found && result.data.length > 0) {
                 result.data.forEach(person => {
-                    text += `   DNI: ${person.dni} — ${person.ap_pat} ${person.ap_mat}, ${person.nombres}\n`;
+                    text += `   DNI: ${person.dni} — ${person.ap_pat} ${person.ap_mat}, ${person.nombres}${person.input_telefono ? ' (Cel: ' + person.input_telefono + ')' : ''}\n`;
                 });
             } else {
                 text += `   ${result.error ? '❌ Error en consulta' : '⚠️ No encontrado'}\n`;
@@ -1145,8 +1161,8 @@
                 `"${notasCol}"`, // Notes
                 "", // Photo
                 prefix ? `"${prefix}"` : "", // Labels
-                "", // Phone 1 - Label
-                ""  // Phone 1 - Value
+                person.input_telefono ? `"Mobile"` : "", // Phone 1 - Label
+                person.input_telefono ? `"${person.input_telefono}"` : ""  // Phone 1 - Value
             ];
 
             csvContent += row.join(';') + '\n';
