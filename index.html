@@ -228,35 +228,53 @@
         </section>
 
         <!-- Export section (shown after batch results) -->
-        <div class="export-section" id="export-section" style="display:none;">
-            <button class="btn-export" id="btn-export-excel" style="background: hsla(200, 70%, 40%, 0.2); color: hsl(200, 70%, 75%); border-color: hsla(200, 70%, 40%, 0.3);">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <path d="M8 13h2"></path>
-                    <path d="M8 17h2"></path>
-                    <path d="M14 13h2"></path>
-                    <path d="M14 17h2"></path>
-                </svg>
-                Exportar a Excel
-            </button>
-            <button class="btn-export" id="btn-export-pdf" style="background: hsla(0, 70%, 50%, 0.2); color: hsl(0, 70%, 75%); border-color: hsla(0, 70%, 50%, 0.3);">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
-                Exportar a PDF
-            </button>
-            <button class="btn-export secondary" id="btn-export-copy">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-                Copiar
-            </button>
+        <div class="export-section" id="export-section" style="display:none; flex-direction: column; gap: 15px;">
+            
+            <!-- Identificador de Google Contacts -->
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; width: 100%; flex-wrap: wrap;">
+                <label for="google-prefix" style="color: var(--text-secondary); font-size: 0.9rem;">Prefijo Contactos:</label>
+                <input type="text" id="google-prefix" class="form-input" placeholder="Ej: EESPP" style="width: 150px; padding: 6px 12px; margin-bottom: 0;">
+                <button class="btn-export" id="btn-export-google" style="background: hsla(140, 70%, 40%, 0.2); color: hsl(140, 70%, 75%); border-color: hsla(140, 70%, 40%, 0.3);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    Contactos (CSV)
+                </button>
+            </div>
+
+            <div style="display: flex; gap: 15px; justify-content: center; width: 100%; flex-wrap: wrap;">
+                <button class="btn-export" id="btn-export-excel" style="background: hsla(200, 70%, 40%, 0.2); color: hsl(200, 70%, 75%); border-color: hsla(200, 70%, 40%, 0.3);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <path d="M8 13h2"></path>
+                        <path d="M8 17h2"></path>
+                        <path d="M14 13h2"></path>
+                        <path d="M14 17h2"></path>
+                    </svg>
+                    Exportar a Excel
+                </button>
+                <button class="btn-export" id="btn-export-pdf" style="background: hsla(0, 70%, 50%, 0.2); color: hsl(0, 70%, 75%); border-color: hsla(0, 70%, 50%, 0.3);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    Exportar a PDF
+                </button>
+                <button class="btn-export secondary" id="btn-export-copy">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    Copiar
+                </button>
+            </div>
         </div>
     </main>
 

@@ -62,6 +62,8 @@
     const btnExportExcel = $('#btn-export-excel');
     const btnExportPdf = $('#btn-export-pdf');
     const btnExportCopy = $('#btn-export-copy');
+    const btnExportGoogle = $('#btn-export-google');
+    const inputGooglePrefix = $('#google-prefix');
 
     // Toast
     const toast = $('#toast');
@@ -719,6 +721,7 @@
         btnExportExcel.addEventListener('click', exportToExcel);
         btnExportPdf.addEventListener('click', exportToPDF);
         btnExportCopy.addEventListener('click', copyToClipboard);
+        btnExportGoogle.addEventListener('click', exportToGoogleContacts);
     }
 
     async function performBatchSearch() {
@@ -1001,6 +1004,91 @@
         }).catch(() => {
             showToast('Error al copiar', 'error');
         });
+    }
+
+    function exportToGoogleContacts() {
+        if (batchResults.length === 0) return;
+
+        // Extraer todos los contactos encontrados
+        let contacts = [];
+        batchResults.forEach(result => {
+            if (result.found && result.data.length > 0) {
+                result.data.forEach(person => {
+                    contacts.push(person);
+                });
+            }
+        });
+
+        if (contacts.length === 0) {
+            showToast('No hay contactos encontrados para exportar', 'warning');
+            return;
+        }
+
+        // Ordenar alfabéticamente por ap_pat, ap_mat, nombres
+        contacts.sort((a, b) => {
+            const nameA = `${a.ap_pat} ${a.ap_mat} ${a.nombres}`.toUpperCase();
+            const nameB = `${b.ap_pat} ${b.ap_mat} ${b.nombres}`.toUpperCase();
+            if (nameA < nameB) return -1;
+            if (nameA > nameB) return 1;
+            return 0;
+        });
+
+        const prefix = inputGooglePrefix.value.trim();
+
+        // Cabecera estricta exigida por el usuario
+        const header = "First Name;Middle Name;Last Name;Phonetic First Name;Phonetic Middle Name;Phonetic Last Name;Name Prefix;Name Suffix;Nickname;File As;Organization Name;Organization Title;Organization Department;Birthday;Notes;Photo;Labels;Phone 1 - Label;Phone 1 - Value\n";
+        
+        let csvContent = header;
+
+        contacts.forEach(person => {
+            // Formatear nombre con el prefijo
+            const fullName = `${person.ap_pat} ${person.ap_mat} ${person.nombres}`;
+            const firstNameCol = prefix ? `${prefix} - ${fullName}` : fullName;
+
+            // Formatear cumpleaños YYYY-MM-DD
+            let birthdayCol = '';
+            if (person.ageData && person.ageData.formattedBirthdate) {
+                // formattedBirthdate es DD-MM-YYYY
+                const parts = person.ageData.formattedBirthdate.split('-');
+                if (parts.length === 3) {
+                    birthdayCol = `${parts[2]}-${parts[1]}-${parts[0]}`; // YYYY-MM-DD
+                }
+            }
+
+            // Formatear notas con el DNI
+            const digito = person.verificador || '';
+            const notasCol = `DNI: ${person.dni}${digito ? '-' + digito : ''}`;
+
+            // Construir la fila con 19 columnas separadas por ';'
+            const row = [
+                `"${firstNameCol}"`, // First Name
+                "", // Middle Name
+                "", // Last Name
+                "", // Phonetic First Name
+                "", // Phonetic Middle Name
+                "", // Phonetic Last Name
+                "", // Name Prefix
+                "", // Name Suffix
+                "", // Nickname
+                "", // File As
+                "", // Organization Name
+                "", // Organization Title
+                "", // Organization Department
+                `"${birthdayCol}"`, // Birthday
+                `"${notasCol}"`, // Notes
+                "", // Photo
+                "", // Labels
+                "", // Phone 1 - Label
+                ""  // Phone 1 - Value
+            ];
+
+            csvContent += row.join(';') + '\n';
+        });
+
+        // Generar Blob
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        saveAs(blob, `contactos_google_${new Date().toISOString().slice(0, 10)}.csv`);
+        showToast('Archivo CSV de Google Contacts descargado', 'success');
     }
 
     // =============================================
