@@ -282,31 +282,23 @@
             `;
             return;
         }
-
         const exactMatches = [];
-        const otherMatches = [];
 
         if (lastSearchData) {
-            const targetApPat = (lastSearchData.apPat || '').toUpperCase().trim();
-            const targetApMat = (lastSearchData.apMat || '').toUpperCase().trim();
-            const targetNombres = (lastSearchData.nombres || '').toUpperCase().trim();
+            const targetApPat = normalizeName(lastSearchData.apPat);
+            const targetApMat = normalizeName(lastSearchData.apMat);
+            const targetNombres = normalizeName(lastSearchData.nombres);
 
             data.forEach(p => {
-                const pApPat = (p.ap_pat || '').toUpperCase().trim();
-                const pApMat = (p.ap_mat || '').toUpperCase().trim();
-                const pNombres = (p.nombres || '').toUpperCase().trim();
+                const pApPat = normalizeName(p.ap_pat);
+                const pApMat = normalizeName(p.ap_mat);
+                const pNombres = normalizeName(p.nombres);
 
                 if (pApPat === targetApPat && pApMat === targetApMat && pNombres === targetNombres) {
                     exactMatches.push(p);
-                } else {
-                    otherMatches.push(p);
                 }
             });
-        } else {
-            otherMatches.push(...data);
         }
-
-
 
         let html = '';
 
@@ -359,10 +351,12 @@
 
         if (exactMatches.length > 0) {
             html += renderTableHTML(exactMatches, '🌟 Coincidencia Principal');
-        }
-        
-        if (otherMatches.length > 0) {
-            html += renderTableHTML(otherMatches, exactMatches.length > 0 ? '👥 Otras Posibles Personas (Familiares o Similares)' : '');
+        } else {
+            html += `
+                <div class="no-results">
+                    <p>No se encontraron coincidencias exactas para esta búsqueda</p>
+                </div>
+            `;
         }
 
         container.innerHTML = html;
@@ -767,22 +761,38 @@
                 const result = await searchDNI(person.apPat, person.apMat, person.nombres, 1);
 
                 if (result.success && result.data && result.data.length > 0) {
-                    // Fetch exact age for each found person
-                    for (let p of result.data) {
-                        try {
-                            const extraResult = await fetchExtraDataByDNI(p.dni);
-                            if (extraResult.success && extraResult.data) {
-                                if (extraResult.data.fecha_nac) {
-                                    p.ageData = calculateExactAge(extraResult.data.fecha_nac);
+                    // --- Filter to exactly match the person's name ---
+                    const targetApPat = normalizeName(person.apPat);
+                    const targetApMat = normalizeName(person.apMat);
+                    const targetNombres = normalizeName(person.nombres);
+
+                    const exactMatchPeople = result.data.filter(p => {
+                        const pApPat = normalizeName(p.ap_pat);
+                        const pApMat = normalizeName(p.ap_mat);
+                        const pNombres = normalizeName(p.nombres);
+                        return pApPat === targetApPat && pApMat === targetApMat && pNombres === targetNombres;
+                    });
+
+                    if (exactMatchPeople.length > 0) {
+                        // Fetch exact age for each exactly matched person
+                        for (let p of exactMatchPeople) {
+                            try {
+                                const extraResult = await fetchExtraDataByDNI(p.dni);
+                                if (extraResult.success && extraResult.data) {
+                                    if (extraResult.data.fecha_nac) {
+                                        p.ageData = calculateExactAge(extraResult.data.fecha_nac);
+                                    }
+                                    p.verificador = extraResult.data.verificador;
+                                    p.ubigeo = extraResult.data.ubigeo;
                                 }
-                                p.verificador = extraResult.data.verificador;
-                                p.ubigeo = extraResult.data.ubigeo;
+                            } catch (err) {
+                                // Ignore extra data errors to still show the DNI
                             }
-                        } catch (err) {
-                            // Ignore extra data errors to still show the DNI
                         }
+                        batchResults.push({ searchQuery, found: true, data: exactMatchPeople });
+                    } else {
+                        batchResults.push({ searchQuery, found: false, data: [], error: false });
                     }
-                    batchResults.push({ searchQuery, found: true, data: result.data });
                 } else {
                     batchResults.push({ searchQuery, found: false, data: [], error: !result.success });
                 }
@@ -1094,6 +1104,11 @@
     // =============================================
     // UTILITY
     // =============================================
+    function normalizeName(str) {
+        if (!str) return '';
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim().replace(/\s+/g, ' ');
+    }
+
     function escapeHtml(str) {
         if (!str) return '';
         const div = document.createElement('div');
