@@ -412,6 +412,8 @@
                         </span>
                     ` : '—';
 
+                    const telefonosStr = (person.input_telefonos && person.input_telefonos.length > 0) ? person.input_telefonos.join(', ') : '—';
+                    
                     html += `
                         <tr>
                             ${j === 0 ? `<td rowspan="${result.data.length}">${i + 1}</td>` : ''}
@@ -421,7 +423,7 @@
                             <td class="birthday-cell">${birthHtml}</td>
                             <td class="age-cell">${ageHtml}</td>
                             <td class="dig-cell">${escapeHtml(person.verificador || '—')}</td>
-                            <td>${escapeHtml(person.input_telefono || '—')}</td>
+                            <td>${escapeHtml(telefonosStr)}</td>
                             ${j === 0 ? `<td rowspan="${result.data.length}"><span class="result-status found">● Encontrado</span></td>` : ''}
                             <td>
                                 <button class="btn-delete-person" data-result-index="${i}" data-person-dni="${person.dni}" title="Eliminar de la lista" style="background: hsla(0, 70%, 50%, 0.1); border: 1px solid hsla(0, 70%, 50%, 0.3); color: var(--error); cursor: pointer; padding: 6px; border-radius: 4px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='hsla(0, 70%, 50%, 0.2)'" onmouseout="this.style.background='hsla(0, 70%, 50%, 0.1)'">
@@ -671,17 +673,18 @@
         const people = [];
 
         for (let line of lines) {
-            let telefono = '';
+            let telefonos = [];
             
-            // Check for phone number (format: ... - 900543258)
-            if (line.includes('-')) {
+            // Extraer múltiples números de celular del final (ej: ... - 999999 - 888888)
+            while (line.includes('-')) {
                 const partsWithDash = line.split('-');
-                // The last part is likely the phone number
                 const lastPart = partsWithDash.pop().trim();
-                // If it looks like a phone number (digits and optional spaces/plus), extract it
+                // Si parece un número de teléfono, lo extraemos y repetimos por si hay más
                 if (/^[\d\s+]+$/.test(lastPart) && lastPart.replace(/\s+/g, '').length >= 7) {
-                    telefono = lastPart;
-                    line = partsWithDash.join('-').trim(); // The rest is the name
+                    telefonos.unshift(lastPart);
+                    line = partsWithDash.join('-').trim();
+                } else {
+                    break;
                 }
             }
 
@@ -702,7 +705,7 @@
                 const apMat = parts[1].toUpperCase();
                 const nombres = parts.slice(2).join(' ').toUpperCase();
                 if (apPat && apMat && nombres) {
-                    people.push({ apPat, apMat, nombres, telefono });
+                    people.push({ apPat, apMat, nombres, telefonos });
                 }
             }
         }
@@ -829,7 +832,7 @@
                     if (exactMatchPeople.length > 0) {
                         // We found exact matches, use only those
                         for (let p of exactMatchPeople) {
-                            p.input_telefono = person.telefono;
+                            p.input_telefonos = person.telefonos || [];
                             try {
                                 const extraResult = await fetchExtraDataByDNI(p.dni);
                                 if (extraResult.success && extraResult.data) {
@@ -848,7 +851,7 @@
                         // No exact match, but we have partial matches returned by the API
                         // Use all returned partial matches so the user can manually delete them
                         for (let p of result.data) {
-                            p.input_telefono = person.telefono;
+                            p.input_telefonos = person.telefonos || [];
                             try {
                                 const extraResult = await fetchExtraDataByDNI(p.dni);
                                 if (extraResult.success && extraResult.data) {
@@ -1025,6 +1028,7 @@
                         ageStr = `${person.ageData.years} años, ${person.ageData.months} m, ${person.ageData.days} d`;
                         birthStr = person.ageData.formattedBirthdate;
                     }
+                    const telefonosStr = (person.input_telefonos && person.input_telefonos.length > 0) ? person.input_telefonos.join(', ') : '—';
                     tableBody.push([
                         result.searchQuery,
                         person.dni,
@@ -1032,7 +1036,7 @@
                         birthStr,
                         ageStr,
                         person.verificador || '—',
-                        person.input_telefono || '—',
+                        telefonosStr,
                         'Encontrado'
                     ]);
                 });
@@ -1074,7 +1078,8 @@
             text += `${i + 1}. ${result.searchQuery}\n`;
             if (result.found && result.data.length > 0) {
                 result.data.forEach(person => {
-                    text += `   DNI: ${person.dni} — ${person.ap_pat} ${person.ap_mat}, ${person.nombres}${person.input_telefono ? ' (Cel: ' + person.input_telefono + ')' : ''}\n`;
+                    const telefonosStr = (person.input_telefonos && person.input_telefonos.length > 0) ? person.input_telefonos.join(', ') : '';
+                    text += `   DNI: ${person.dni} — ${person.ap_pat} ${person.ap_mat}, ${person.nombres}${telefonosStr ? ' (Cel: ' + telefonosStr + ')' : ''}\n`;
                 });
             } else {
                 text += `   ${result.error ? '❌ Error en consulta' : '⚠️ No encontrado'}\n`;
@@ -1124,10 +1129,6 @@
         let csvContent = header;
 
         contacts.forEach(person => {
-            // Formatear nombre con el prefijo
-            const fullName = `${person.ap_pat} ${person.ap_mat} ${person.nombres}`;
-            const firstNameCol = prefix ? `${prefix} - ${fullName}` : fullName;
-
             // Formatear cumpleaños YYYY-MM-DD
             let birthdayCol = '';
             if (person.ageData && person.ageData.formattedBirthdate) {
@@ -1142,30 +1143,41 @@
             const digito = person.verificador || '';
             const notasCol = `DNI: ${person.dni}${digito ? '-' + digito : ''}`;
 
-            // Construir la fila con 19 columnas separadas por ';'
-            const row = [
-                `"${firstNameCol}"`, // First Name
-                "", // Middle Name
-                "", // Last Name
-                "", // Phonetic First Name
-                "", // Phonetic Middle Name
-                "", // Phonetic Last Name
-                "", // Name Prefix
-                "", // Name Suffix
-                "", // Nickname
-                "", // File As
-                "", // Organization Name
-                "", // Organization Title
-                "", // Organization Department
-                `"${birthdayCol}"`, // Birthday
-                `"${notasCol}"`, // Notes
-                "", // Photo
-                prefix ? `"${prefix}"` : "", // Labels
-                person.input_telefono ? `"Mobile"` : "", // Phone 1 - Label
-                person.input_telefono ? `"${person.input_telefono}"` : ""  // Phone 1 - Value
-            ];
+            const telefonos = (person.input_telefonos && person.input_telefonos.length > 0) ? person.input_telefonos : [''];
 
-            csvContent += row.join(';') + '\n';
+            telefonos.forEach((telefono, idx) => {
+                // Formatear nombre con el prefijo y sufijo si hay múltiples teléfonos
+                let fullName = `${person.ap_pat} ${person.ap_mat} ${person.nombres}`;
+                if (telefonos.length > 1) {
+                    fullName += ` ${idx + 1}`;
+                }
+                const firstNameCol = prefix ? `${prefix} - ${fullName}` : fullName;
+
+                // Construir la fila con 19 columnas separadas por ';'
+                const row = [
+                    `"${firstNameCol}"`, // First Name
+                    "", // Middle Name
+                    "", // Last Name
+                    "", // Phonetic First Name
+                    "", // Phonetic Middle Name
+                    "", // Phonetic Last Name
+                    "", // Name Prefix
+                    "", // Name Suffix
+                    "", // Nickname
+                    "", // File As
+                    "", // Organization Name
+                    "", // Organization Title
+                    "", // Organization Department
+                    `"${birthdayCol}"`, // Birthday
+                    `"${notasCol}"`, // Notes
+                    "", // Photo
+                    prefix ? `"${prefix}"` : "", // Labels
+                    telefono ? `"Mobile"` : "", // Phone 1 - Label
+                    telefono ? `"${telefono}"` : ""  // Phone 1 - Value
+                ];
+
+                csvContent += row.join(';') + '\n';
+            });
         });
 
         // Generar Blob
