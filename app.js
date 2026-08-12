@@ -1094,6 +1094,16 @@
         });
     }
 
+    function getCurrentDateTime() {
+        const now = new Date();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const yyyy = now.getFullYear();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+    }
+
     function exportToGoogleContacts() {
         if (batchResults.length === 0) return;
 
@@ -1139,9 +1149,10 @@
                 }
             }
 
-            // Formatear notas con el DNI
+            // Formatear notas con el DNI y la fecha de agregado
             const digito = person.verificador || '';
-            const notasCol = `DNI: ${person.dni}${digito ? '-' + digito : ''}`;
+            const nowTime = getCurrentDateTime();
+            const notasCol = `DNI: ${person.dni}${digito ? '-' + digito : ''} - Agregado: ${nowTime}`;
 
             const telefonos = (person.input_telefonos && person.input_telefonos.length > 0) ? person.input_telefonos : [''];
 
@@ -1213,6 +1224,271 @@
                 input.value = input.value.toUpperCase();
                 input.setSelectionRange(pos, pos);
             });
+        });
+    }
+
+    // =============================================
+    // CSV MERGE TOOL
+    // =============================================
+    function setupCsvMerge() {
+        const mergeInput = document.getElementById('merge-csv-input');
+        const mergeStrategy = document.getElementById('merge-strategy');
+        const btnMerge = document.getElementById('btn-merge-export');
+        const prefixInput = document.getElementById('google-prefix');
+
+        if (!btnMerge) return;
+
+        // Detect prefix on file select
+        mergeInput.addEventListener('change', () => {
+            const file = mergeInput.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                const lines = content.split('\n');
+                if (lines.length > 1) {
+                    const firstRow = lines[1];
+                    let inQuotes = false;
+                    let currentVal = "";
+                    let cols = [];
+                    for(let ch of firstRow) {
+                        if (ch === '"') inQuotes = !inQuotes;
+                        else if (ch === ';' && !inQuotes) {
+                            cols.push(currentVal);
+                            currentVal = "";
+                        } else {
+                            currentVal += ch;
+                        }
+                    }
+                    cols.push(currentVal);
+                    
+                    if (cols.length >= 17) {
+                        let labels = cols[16];
+                        if (labels.startsWith('"') && labels.endsWith('"')) {
+                            labels = labels.substring(1, labels.length - 1);
+                        }
+                        if (labels && prefixInput) {
+                            prefixInput.value = labels;
+                            showToast('Prefijo detectado y actualizado', 'success');
+                        }
+                    }
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        btnMerge.addEventListener('click', () => {
+            if (batchResults.length === 0) {
+                showToast('No hay resultados nuevos para fusionar', 'warning');
+                return;
+            }
+
+            const file = mergeInput.files[0];
+            if (!file) {
+                showToast('Selecciona el CSV antiguo para fusionar', 'warning');
+                return;
+            }
+
+            const prefix = prefixInput ? prefixInput.value.trim() : '';
+            const strategy = mergeStrategy.value;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                const lines = content.split('\n');
+                
+                if (lines.length < 2) {
+                    showToast('El archivo CSV está vacío o es inválido', 'error');
+                    return;
+                }
+
+                // Parse old contacts
+                const oldContacts = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    let inQuotes = false;
+                    let currentVal = "";
+                    let cols = [];
+                    for(let ch of line) {
+                        if (ch === '"') inQuotes = !inQuotes;
+                        else if (ch === ';' && !inQuotes) {
+                            cols.push(currentVal);
+                            currentVal = "";
+                        } else {
+                            currentVal += ch;
+                        }
+                    }
+                    cols.push(currentVal);
+
+                    if (cols.length >= 17) {
+                        let firstName = cols[0];
+                        if (firstName.startsWith('"') && firstName.endsWith('"')) firstName = firstName.substring(1, firstName.length - 1);
+                        
+                        let cleanName = firstName;
+                        const dashIndex = firstName.indexOf(' - ');
+                        if (dashIndex !== -1) {
+                            cleanName = firstName.substring(dashIndex + 3).trim();
+                        }
+                        // Remove suffix like " 1", " 2" if present
+                        cleanName = cleanName.replace(/ \d+$/, '');
+
+                        let birthdayCol = cols[13] || "";
+                        if (birthdayCol.startsWith('"') && birthdayCol.endsWith('"')) birthdayCol = birthdayCol.substring(1, birthdayCol.length - 1);
+
+                        let notesCol = cols[14] || "";
+                        if (notesCol.startsWith('"') && notesCol.endsWith('"')) notesCol = notesCol.substring(1, notesCol.length - 1);
+                        
+                        // Extract DNI from notes (DNI: 12345678)
+                        let dni = "";
+                        const dniMatch = notesCol.match(/DNI: (\d+)/);
+                        if (dniMatch) {
+                            dni = dniMatch[1];
+                        }
+
+                        let phone = cols.length >= 19 ? cols[18] : "";
+                        if (phone.startsWith('"') && phone.endsWith('"')) phone = phone.substring(1, phone.length - 1);
+
+                        // If same DNI exists, we group phones
+                        const existing = oldContacts.find(c => c.dni && c.dni === dni);
+                        if (existing) {
+                            if (phone && !existing.telefonos.includes(phone)) existing.telefonos.push(phone);
+                        } else {
+                            oldContacts.push({
+                                cleanName,
+                                dni,
+                                birthdayCol,
+                                notesCol,
+                                telefonos: phone ? [phone] : []
+                            });
+                        }
+                    }
+                }
+
+                // Prepare new contacts
+                const newContacts = [];
+                batchResults.forEach(result => {
+                    if (result.found && result.data.length > 0) {
+                        result.data.forEach(p => {
+                            const cleanName = `${p.ap_pat} ${p.ap_mat} ${p.nombres}`;
+                            let birthdayCol = '';
+                            if (p.ageData && p.ageData.formattedBirthdate) {
+                                const parts = p.ageData.formattedBirthdate.split('-');
+                                if (parts.length === 3) birthdayCol = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                            }
+                            const digito = p.verificador || '';
+                            const baseNotes = `DNI: ${p.dni}${digito ? '-' + digito : ''}`;
+                            const telefonos = (p.input_telefonos && p.input_telefonos.length > 0) ? [...p.input_telefonos] : [];
+                            
+                            newContacts.push({
+                                cleanName,
+                                dni: p.dni,
+                                birthdayCol,
+                                baseNotes,
+                                telefonos,
+                                isNew: true
+                            });
+                        });
+                    }
+                });
+
+                // Merge process
+                const mergedMap = new Map();
+
+                // First, add all old contacts
+                oldContacts.forEach(oldC => {
+                    if (oldC.dni) {
+                        mergedMap.set(oldC.dni, { ...oldC, isUpdated: false });
+                    }
+                });
+
+                // Now, process new contacts
+                const nowTime = getCurrentDateTime();
+
+                newContacts.forEach(newC => {
+                    if (mergedMap.has(newC.dni)) {
+                        const oldC = mergedMap.get(newC.dni);
+                        oldC.isUpdated = true;
+                        
+                        // Strategy
+                        if (strategy === 'replace') {
+                            oldC.telefonos = [...newC.telefonos];
+                        } else if (strategy === 'add') {
+                            newC.telefonos.forEach(t => {
+                                if (!oldC.telefonos.includes(t)) oldC.telefonos.push(t);
+                            });
+                        }
+                        // if strategy is 'keep', we do nothing with phones
+                        
+                        // Always update base info (name, birthday, baseNotes)
+                        oldC.cleanName = newC.cleanName;
+                        oldC.birthdayCol = newC.birthdayCol;
+                        oldC.baseNotes = newC.baseNotes;
+                    } else {
+                        // Truly new contact
+                        newC.baseNotes = `${newC.baseNotes} - Agregado: ${nowTime}`;
+                        mergedMap.set(newC.dni, newC);
+                    }
+                });
+
+                // Process notes for updated contacts
+                const finalContacts = Array.from(mergedMap.values());
+                finalContacts.forEach(c => {
+                    if (c.isUpdated) {
+                        c.baseNotes = `${c.baseNotes} - Actualizado: ${nowTime}`;
+                    } else if (!c.isNew && c.notesCol) {
+                        // Keep old notes if not updated and not new
+                        c.baseNotes = c.notesCol; 
+                    }
+                });
+
+                // Sort alphabetically by cleanName
+                finalContacts.sort((a, b) => a.cleanName.localeCompare(b.cleanName));
+
+                // Generate CSV
+                const header = "First Name;Middle Name;Last Name;Phonetic First Name;Phonetic Middle Name;Phonetic Last Name;Name Prefix;Name Suffix;Nickname;File As;Organization Name;Organization Title;Organization Department;Birthday;Notes;Photo;Labels;Phone 1 - Label;Phone 1 - Value\n";
+                let csvContent = header;
+
+                finalContacts.forEach(c => {
+                    const telefonos = c.telefonos.length > 0 ? c.telefonos : [''];
+                    
+                    telefonos.forEach((telefono, idx) => {
+                        let fullName = c.cleanName;
+                        if (telefonos.length > 1) {
+                            fullName += ` ${idx + 1}`;
+                        }
+                        const firstNameCol = prefix ? `${prefix} - ${fullName}` : fullName;
+
+                        const row = [
+                            `"${firstNameCol}"`, "", "", "", "", "", "", "", "", "", "", "", "",
+                            `"${c.birthdayCol}"`,
+                            `"${c.baseNotes}"`,
+                            "",
+                            prefix ? `"${prefix}"` : "",
+                            telefono ? `"Mobile"` : "",
+                            telefono ? `"${telefono}"` : ""
+                        ];
+
+                        csvContent += row.join(';') + '\n';
+                    });
+                });
+
+                // Download
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.setAttribute('href', url);
+                a.setAttribute('download', `contactos_fusionados_${nowTime.split(' ')[0].replace(/\//g, '-')}.csv`);
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                showToast('Archivo fusionado descargado con éxito', 'success');
+            };
+            
+            reader.readAsText(file);
         });
     }
 
@@ -1329,6 +1605,7 @@
         setupSingleSearch();
         createGridRows();
         setupBatchModes();
+        setupCsvMerge();
         setupCsvModifier();
         setupUppercase();
         updateBatchCount();

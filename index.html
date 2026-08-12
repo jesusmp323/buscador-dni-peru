@@ -275,6 +275,43 @@
                     Copiar
                 </button>
             </div>
+
+            <!-- Fusión de CSV Antiguo con Nuevos Resultados -->
+            <div style="margin-top: 20px; padding: 15px; background: hsla(280, 70%, 50%, 0.05); border: 1px solid hsla(280, 70%, 50%, 0.2); border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0; color: hsl(280, 70%, 75%); display: flex; align-items: center; gap: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 3h5v5"></path>
+                        <path d="M4 20L21 3"></path>
+                        <path d="M21 16v5h-5"></path>
+                        <path d="M15 15l6 6"></path>
+                        <path d="M4 4l5 5"></path>
+                    </svg>
+                    Añadir a un CSV Existente
+                </h4>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 15px;">
+                    Sube tu archivo antiguo de contactos y combínalo con estos nuevos resultados.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <input type="file" id="merge-csv-input" accept=".csv" class="form-input" style="padding: 6px; max-width: 250px;">
+                        
+                        <select id="merge-strategy" class="form-input" style="padding: 6px; max-width: 250px;">
+                            <option value="replace">Si existe: Reemplazar el número viejo con el nuevo</option>
+                            <option value="add">Si existe: Mantener el viejo y añadir el nuevo (2do celular)</option>
+                            <option value="keep">Si existe: Mantener solo el viejo e ignorar el nuevo</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn-primary" id="btn-merge-export" style="align-self: flex-start; background: linear-gradient(135deg, hsl(280, 70%, 50%), hsl(280, 70%, 40%)); padding: 6px 16px; font-size: 0.9rem;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Fusionar y Descargar CSV
+                    </button>
+                </div>
+            </div>
         </div>
     <!-- CSV Modifier Tool -->
         <section class="search-section" style="margin-top: 30px;">
